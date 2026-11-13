@@ -2,17 +2,20 @@
 
 An MCP server that lets Claude read and annotate the chart open in a **locally running TradingView Desktop** app: read price and candles, draw lines, manage price alerts. Written from scratch (original code, MIT).
 
-## Tools (13)
+## Tools (19)
 | Group | Tools |
 |---|---|
-| Read | `chart_health`, `get_quote`, `get_candles` |
-| View | `set_timeframe`, `set_visible_range` |
-| Draw | `list_drawings`, `draw_trend_line`, `draw_horizontal_line`, `remove_drawing`, `clear_drawings` |
-| Alerts | `list_alerts`, `create_alert`, `delete_alert` |
+| Read | `chart_health`, `get_quote`, `get_candles` (optional `resolution` reads D, 240, 60... and restores the chart), `find_pivots` |
+| View | `set_timeframe`, `set_visible_range`, `screenshot` |
+| Draw | `list_drawings`, `get_drawing`, `draw_trend_line`, `draw_chain`, `draw_horizontal_line`, `remove_drawing`, `clear_drawings` |
+| Alerts | `list_alerts`, `create_alert`, `modify_alert`, `list_fires`, `delete_alert` |
+
+`draw_chain` takes pivot points and draws a connected chain of straight lines (each starts where the last ended). It checks every segment against the candles first and refuses, listing the candles it would cut through, unless `force` is set.
 
 Safety by design:
 - There is **no** tool that clicks the UI, types, or runs arbitrary page code, so the server cannot reach the order panel or place a trade.
 - `create_alert` refuses a level on the wrong side of live price (it would fire at once), then reads the alert back and fails if the stored level differs.
+- `modify_alert` changes a message or level in place (same alert id), applies the same wrong-side check, and reads the result back.
 - `delete_alert` confirms the alert is gone.
 
 ## How it works
