@@ -277,6 +277,14 @@ export async function screenshot(page, dir) {
 // ---------- alerts ----------
 
 async function alertsCall(page, path, body) {
+  try { return await alertsCallOnce(page, path, body); } catch (e) {
+    if (body || !/Failed to fetch/.test(String(e.message))) throw e; // only reads are safe to repeat
+    await new Promise((r) => setTimeout(r, 800));
+    return alertsCallOnce(page, path, body);
+  }
+}
+
+async function alertsCallOnce(page, path, body) {
   // The page's own alert client adds the user name and build time to write calls; do the same.
   const res = await page.evaluate(`(async () => {
     const url = new URL(${JSON.stringify(ALERTS_URL + '/' + path)});
