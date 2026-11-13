@@ -38,7 +38,7 @@ Environment: `TV_DEBUG_HOST` (default `127.0.0.1`), `TV_DEBUG_PORT` (default `92
 Check it against your chart: `npm run selftest` (23 live checks: reads, draws and removes lines, creates, edits and deletes a far-away test alert, restores your zoom, and confirms your alert and drawing counts are unchanged).
 
 ## Reliability
-Every tool call has a time limit (60 to 180 seconds depending on the tool). If TradingView is busy or the page does not answer, you get an error back instead of a hang, and the connection is closed and reopened. The timeframe and zoom are restored even after a failed read, and a shape TradingView refuses to create is retried once.
+Chart calls run strictly one at a time, in the order they arrive. Agents often fire several tool calls at once, and two timeframe switches or history loads at the same moment leave the chart on the wrong timeframe. Every tool call has a time limit (60 to 180 seconds depending on the tool). If TradingView is busy or the page does not answer, you get an error back instead of a hang, and the connection is closed and reopened. The timeframe and zoom are restored even after a failed read, and a shape TradingView refuses to create is retried once.
 
 ## Status
 Version 0.1. Works on TradingView Desktop (macOS) with the page version of 12 Nov 2026. TradingView can change its internals at any time, which would break the page calls; the alert payload in particular was matched to a real request and may need updating.

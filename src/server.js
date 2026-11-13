@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { Page } from './cdp.js';
 import * as tv from './tv.js';
 import { findPivots, suggestChain } from './analysis.js';
+import { createQueue } from './queue.js';
 
 let page = null;
 async function getPage() {
@@ -26,7 +27,14 @@ const LIMITS = { default: 60000, save_candles: 180000, get_candles: 90000, find_
  * Every call has a time limit (per tool name), so a stuck chart gives the agent an error in under two minutes
  * instead of a silent hang. The connection is dropped (and closed) only when it is broken or a call was abandoned.
  */
-async function run(name, fn, args) {
+const enqueue = createQueue();
+
+/** Chart calls are serialised: the chart is one shared thing, and agents often fire several tool calls at once. */
+function run(name, fn, args) {
+  return enqueue(() => runOne(name, fn, args));
+}
+
+async function runOne(name, fn, args) {
   const limit = LIMITS[name] ?? LIMITS.default;
   let timer;
   try {
