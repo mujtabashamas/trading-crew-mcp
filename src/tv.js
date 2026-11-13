@@ -104,9 +104,20 @@ export async function candles(page, count = 100, resolution) {
     await ensureBars(page, count);
     return await candlesNow(page, count);
   } finally {
-    await setTimeframe(page, before);
-    await waitForBars(page, before).catch(() => {});
-    if (view) await setVisibleRange(page, view.from, view.to).catch(() => {});
+    await restoreResolution(page, before, view);
+  }
+}
+
+/** Put the chart back on its timeframe and zoom, trying up to three times (the page can be slow after a switch). */
+async function restoreResolution(page, before, view) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const now = await page.evaluate(`${CHART}.resolution()`, 8000);
+      if (!sameResolution(now, before)) await setTimeframe(page, before);
+      await waitForBars(page, before);
+      if (view) await setVisibleRange(page, view.from, view.to).catch(() => {});
+      return;
+    } catch { await new Promise((r) => setTimeout(r, 1000)); }
   }
 }
 
@@ -175,8 +186,17 @@ export function listDrawings(page) {
 }
 
 /** Straight line between two points: {time (unix s), price}. */
+/** TradingView sometimes refuses to create a shape while the chart is busy (for example mid-switch). Retry once. */
+async function withRetry(fn) {
+  try { return await fn(); } catch (e) {
+    if (!/Cannot create/.test(String(e.message))) throw e;
+    await new Promise((r) => setTimeout(r, 1000));
+    return fn();
+  }
+}
+
 export function drawTrendLine(page, p1, p2, { color = '#ff1744', width = 2, extendRight = false } = {}) {
-  return page.evaluate(`(async () => {
+  return withRetry(() => page.evaluate(`(async () => {
     const chart = ${CHART};
     const id = await chart.createMultipointShape(
       [{ time: ${Number(p1.time)}, price: ${Number(p1.price)} }, { time: ${Number(p2.time)}, price: ${Number(p2.price)} }],
@@ -184,18 +204,18 @@ export function drawTrendLine(page, p1, p2, { color = '#ff1744', width = 2, exte
         overrides: { linecolor: ${JSON.stringify(color)}, linewidth: ${Number(width)}, extendRight: ${!!extendRight} } }
     );
     return { id };
-  })()`);
+  })()`));
 }
 
 export function drawHorizontalLine(page, price, { color = '#ff1744', width = 1, time } = {}) {
-  return page.evaluate(`(async () => {
+  return withRetry(() => page.evaluate(`(async () => {
     const chart = ${CHART};
     const t = ${time ? Number(time) : 'chart.chartModel().mainSeries().bars().last().value[0]'};
     const id = await chart.createShape({ time: t, price: ${Number(price)} },
       { shape: 'horizontal_line', lock: false,
         overrides: { linecolor: ${JSON.stringify(color)}, linewidth: ${Number(width)} } });
     return { id };
-  })()`);
+  })()`));
 }
 
 export function removeDrawing(page, id) {

@@ -2,10 +2,10 @@
 
 An MCP server that lets Claude read and annotate the chart open in a **locally running TradingView Desktop** app: read price and candles, draw lines, manage price alerts. Written from scratch (original code, MIT).
 
-## Tools (20)
+## Tools (21)
 | Group | Tools |
 |---|---|
-| Read | `chart_health`, `get_quote`, `get_candles` (up to 500 candles as a compact table; optional `resolution` reads D, 240, 60... and restores the chart), `save_candles` (writes up to 20,000 candles to a JSON file so analysis never copies numbers by hand), `find_pivots` |
+| Read | `chart_health`, `get_quote`, `get_candles` (up to 500 candles as a compact table; optional `resolution` reads D, 240, 60... and restores the chart), `save_candles` (writes up to 20,000 candles to a JSON file so analysis never copies numbers by hand), `find_pivots`, `suggest_chain` (finds a chain of swing points that no candle cuts, ready for `draw_chain`) |
 | View | `set_timeframe`, `set_visible_range`, `screenshot` |
 | Draw | `list_drawings`, `get_drawing`, `draw_trend_line`, `draw_chain`, `draw_horizontal_line`, `remove_drawing`, `clear_drawings` |
 | Alerts | `list_alerts`, `create_alert`, `modify_alert`, `list_fires`, `delete_alert` |
@@ -35,7 +35,10 @@ claude mcp add trading-crew --scope project -- node /full/path/to/trading-crew-m
 ```
 Environment: `TV_DEBUG_HOST` (default `127.0.0.1`), `TV_DEBUG_PORT` (default `9222`), `TV_DATA_DIR` (where `save_candles` writes; default `./trading-crew-data`).
 
-Check it against your chart: `npm run selftest` (21 live checks: reads, draws and removes lines, creates, edits and deletes a far-away test alert, restores your zoom, and confirms your alert and drawing counts are unchanged).
+Check it against your chart: `npm run selftest` (23 live checks: reads, draws and removes lines, creates, edits and deletes a far-away test alert, restores your zoom, and confirms your alert and drawing counts are unchanged).
+
+## Reliability
+Every tool call has a time limit (60 to 180 seconds depending on the tool). If TradingView is busy or the page does not answer, you get an error back instead of a hang, and the connection is closed and reopened. The timeframe and zoom are restored even after a failed read, and a shape TradingView refuses to create is retried once.
 
 ## Status
 Version 0.1. Works on TradingView Desktop (macOS) with the page version of 12 Nov 2026. TradingView can change its internals at any time, which would break the page calls; the alert payload in particular was matched to a real request and may need updating.

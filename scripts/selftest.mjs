@@ -4,7 +4,7 @@
 // Usage: npm run selftest        Exit code 0 = everything passed.
 import { Page } from '../src/cdp.js';
 import * as tv from '../src/tv.js';
-import { findPivots } from '../src/analysis.js';
+import { findPivots, suggestChain } from '../src/analysis.js';
 import { readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -50,6 +50,15 @@ try {
 
   const pv = findPivots(await tv.candles(p, 300), 3);
   check('find_pivots', pv.length > 0 && pv.every((x) => x.time && x.price), `${pv.length} pivots`);
+
+  const cs300 = await tv.candlesNow(p, 300);
+  for (const side of ['above', 'below']) {
+    const sc = suggestChain(cs300, findPivots(cs300, 5), side, { tolerance: 0.2 });
+    if (sc.points.length < 2) { check(`suggest_chain (${side}) found a chain`, false, 'none found'); continue; }
+    const dr = await tv.drawChain(p, sc.points, { side, color: side === 'above' ? '#ff1744' : '#00c853', tolerance: 0.2 });
+    created.drawings.push(...(dr.ids || []));
+    check(`suggest_chain (${side}) output is accepted by draw_chain`, dr.drawn === true, `${sc.points.length} points, ${sc.lines} lines`);
+  }
 
   const t0 = q.time - 3600;
   const crossing = await tv.drawChain(p, [{ time: t0, price: q.close + 100 }, { time: q.time, price: q.close - 100 }], { side: 'above', color: '#ff1744' });

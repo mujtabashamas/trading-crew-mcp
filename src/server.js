@@ -7,26 +7,52 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { Page } from './cdp.js';
 import * as tv from './tv.js';
-import { findPivots } from './analysis.js';
+import { findPivots, suggestChain } from './analysis.js';
 
 let page = null;
 async function getPage() {
   if (!page || page.ws.readyState !== 1) page = await Page.connect();
   return page;
 }
+function dropPage() {
+  try { page?.close(); } catch { /* already closed */ }
+  page = null;
+}
 
-/** Wrap a tool: connect, run, return JSON text; report errors as tool errors, not crashes. */
-const tool = (fn) => async (args) => {
+const LIMITS = { default: 60000, save_candles: 180000, get_candles: 90000, find_pivots: 90000, suggest_chain: 90000 };
+
+/**
+ * Run one tool call: connect, run, return compact JSON text. Errors come back as tool errors, never crashes.
+ * Every call has a time limit (per tool name), so a stuck chart gives the agent an error in under two minutes
+ * instead of a silent hang. The connection is dropped (and closed) only when it is broken or a call was abandoned.
+ */
+async function run(name, fn, args) {
+  const limit = LIMITS[name] ?? LIMITS.default;
+  let timer;
   try {
-    const result = await fn(await getPage(), args);
+    const work = (async () => fn(await getPage(), args))();
+    work.catch(() => {}); // an abandoned call must not become an unhandled rejection
+    const timeout = new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(`Timed out after ${limit / 1000}s. TradingView may be busy; try again in a moment.`)), limit); });
+    const result = await Promise.race([work, timeout]);
     return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   } catch (e) {
-    page = null; // reconnect next time
-    return { isError: true, content: [{ type: 'text', text: String(e.message || e) }] };
+    const msg = String(e.message || e);
+    if (/^Timed out after/.test(msg) || /Connection closed|Cannot reach|connecting to the TradingView/.test(msg) || (page && page.ws.readyState !== 1)) dropPage();
+    return { isError: true, content: [{ type: 'text', text: msg }] };
+  } finally {
+    clearTimeout(timer);
   }
-};
+}
+
+/** Marks a tool body; server.tool below wraps it with run() using the tool's own name for its time limit. */
+const tool = (fn) => Object.assign(async () => { throw new Error('tool not wrapped'); }, { fn });
 
 const server = new McpServer({ name: 'trading-crew-mcp', version: '0.1.0' });
+const register = server.tool.bind(server);
+server.tool = (name, ...rest) => {
+  const marked = rest.pop();
+  return register(name, ...rest, (args) => run(name, marked.fn, args));
+};
 /** Candles as a compact table (fields once, then number rows): about 4x smaller than one object per candle. */
 const table = (cs) => ({ fields: ['time', 'open', 'high', 'low', 'close', 'volume'], rows: cs.map((c) => [c.time, c.open, c.high, c.low, c.close, c.volume]) });
 const point = z.object({ time: z.number().describe('Candle time, unix seconds'), price: z.number() });
@@ -46,6 +72,16 @@ server.tool('save_candles', 'Save up to 20000 candles of a timeframe to a JSON f
 server.tool('find_pivots', 'Swing highs and lows with exact candle times and prices, from the last N candles of a timeframe.',
   { count: z.number().int().min(10).max(1000).optional(), resolution: z.string().optional(), strength: z.number().int().min(1).max(10).optional() },
   tool(async (p, a) => findPivots(await tv.candles(p, a.count ?? 300, a.resolution), a.strength ?? 3)));
+server.tool('suggest_chain',
+  'Find a connected chain of swing points that no candle cuts through, on the chart\'s current timeframe. side "above" = falling chain over highs (red), "below" = rising chain under lows (green). Returns points to pass straight to draw_chain, with the same tolerance.',
+  { side: z.enum(['above', 'below']), count: z.number().int().min(50).max(500).optional(), strength: z.number().int().min(2).max(10).optional(),
+    tolerance: z.number().min(0).max(2).optional(), max_points: z.number().int().min(2).max(8).optional() },
+  tool(async (p, a) => {
+    const tolerance = a.tolerance ?? 0.2;
+    const cs = await tv.candlesNow(p, a.count ?? 300);
+    const r = suggestChain(cs, findPivots(cs, a.strength ?? 5), a.side, { tolerance, maxPoints: a.max_points ?? 5 });
+    return { ...r, side: a.side, tolerance, note: r.points.length < 2 ? 'No clean chain found. Try a lower strength or a larger count.' : 'Pass points and tolerance to draw_chain.' };
+  }));
 server.tool('set_timeframe', 'Change the chart timeframe (1, 5, 15, 60, 240, D, W). Set it back afterwards.',
   { resolution: z.string() }, tool((p, a) => tv.setTimeframe(p, a.resolution)));
 server.tool('set_visible_range', 'Scroll and zoom the chart to a time range (unix seconds).',

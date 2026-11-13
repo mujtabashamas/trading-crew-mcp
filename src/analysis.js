@@ -44,3 +44,33 @@ export function crossings(a, b, candles, side, tolerance = 0) {
 }
 
 const round = (x) => Math.round(x * 100) / 100;
+
+/**
+ * Suggest a connected chain of pivots that no candle cuts through (so draw_chain will accept it).
+ * side 'above': a falling chain over swing highs; 'below': a rising chain under swing lows.
+ * Start at the extreme pivot of the window (highest high / lowest low), then repeatedly jump to the
+ * FARTHEST later pivot whose segment is clean, so the chain has as few lines as possible.
+ * Returns { points, lines, skipped } where skipped counts pivots that could not be joined.
+ */
+export function suggestChain(candles, pivots, side, { tolerance = 0.2, maxPoints = 5 } = {}) {
+  const want = side === 'above' ? 'high' : 'low';
+  const ps = pivots.filter((p) => p.type === want).sort((a, b) => a.time - b.time);
+  if (ps.length < 2) return { points: [], lines: 0, skipped: ps.length };
+  const better = (a, b) => (side === 'above' ? a.price > b.price : a.price < b.price);
+  let start = ps[0];
+  for (const p of ps) if (better(p, start)) start = p;
+  const points = [{ time: start.time, price: start.price }];
+  let cur = start;
+  while (points.length < maxPoints) {
+    // later pivots that continue the direction (falling for 'above', rising for 'below')
+    const next = ps.filter((p) => p.time > cur.time && (side === 'above' ? p.price < cur.price : p.price > cur.price));
+    let pick = null;
+    for (let i = next.length - 1; i >= 0; i--) {              // farthest first
+      if (crossings({ time: cur.time, price: cur.price }, next[i], candles, side, tolerance).length === 0) { pick = next[i]; break; }
+    }
+    if (!pick) break;
+    points.push({ time: pick.time, price: pick.price });
+    cur = pick;
+  }
+  return { points, lines: Math.max(0, points.length - 1), skipped: ps.length - points.length };
+}

@@ -53,12 +53,13 @@ export class Page {
     });
   }
 
-  static async connect(targetId) {
+  static async connect(targetId, openTimeoutMs = 8000) {
     const target = await findChartTarget(targetId);
     const ws = new WebSocket(target.webSocketDebuggerUrl, { perMessageDeflate: false });
     await new Promise((resolve, reject) => {
-      ws.once('open', resolve);
-      ws.once('error', reject);
+      const timer = setTimeout(() => { ws.terminate(); reject(new CdpError('Timed out connecting to the TradingView page')); }, openTimeoutMs);
+      ws.once('open', () => { clearTimeout(timer); resolve(); });
+      ws.once('error', (e) => { clearTimeout(timer); reject(e); });
     });
     return new Page(ws, target);
   }
