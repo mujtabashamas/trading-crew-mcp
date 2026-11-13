@@ -2,10 +2,10 @@
 
 An MCP server that lets Claude read and annotate the chart open in a **locally running TradingView Desktop** app: read price and candles, draw lines, manage price alerts. Written from scratch (original code, MIT).
 
-## Tools (19)
+## Tools (20)
 | Group | Tools |
 |---|---|
-| Read | `chart_health`, `get_quote`, `get_candles` (optional `resolution` reads D, 240, 60... and restores the chart), `find_pivots` |
+| Read | `chart_health`, `get_quote`, `get_candles` (optional `resolution` reads D, 240, 60... and restores the chart; large counts load the full history, about 4 months of M15), `save_candles` (writes up to 20,000 candles to a JSON file so analysis never copies numbers by hand), `find_pivots` |
 | View | `set_timeframe`, `set_visible_range`, `screenshot` |
 | Draw | `list_drawings`, `get_drawing`, `draw_trend_line`, `draw_chain`, `draw_horizontal_line`, `remove_drawing`, `clear_drawings` |
 | Alerts | `list_alerts`, `create_alert`, `modify_alert`, `list_fires`, `delete_alert` |
@@ -33,9 +33,9 @@ Add to Claude Code:
 ```
 claude mcp add trading-crew --scope project -- node /full/path/to/trading-crew-mcp/src/server.js
 ```
-Environment: `TV_DEBUG_HOST` (default `127.0.0.1`), `TV_DEBUG_PORT` (default `9222`).
+Environment: `TV_DEBUG_HOST` (default `127.0.0.1`), `TV_DEBUG_PORT` (default `9222`), `TV_DATA_DIR` (where `save_candles` writes; default `./trading-crew-data`).
 
-Check it against your chart: `npm run selftest` (18 live checks: reads, draws and removes lines, creates, edits and deletes a far-away test alert, restores your zoom, and confirms your alert and drawing counts are unchanged).
+Check it against your chart: `npm run selftest` (21 live checks: reads, draws and removes lines, creates, edits and deletes a far-away test alert, restores your zoom, and confirms your alert and drawing counts are unchanged).
 
 ## Status
 Version 0.1. Works on TradingView Desktop (macOS) with the page version of 12 Nov 2026. TradingView can change its internals at any time, which would break the page calls; the alert payload in particular was matched to a real request and may need updating.

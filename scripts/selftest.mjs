@@ -5,6 +5,9 @@
 import { Page } from '../src/cdp.js';
 import * as tv from '../src/tv.js';
 import { findPivots } from '../src/analysis.js';
+import { readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 let failed = 0;
 const check = (name, ok, detail = '') => {
@@ -32,6 +35,18 @@ try {
   const d = await tv.candles(p, 5, startRes === 'D' ? '60' : 'D');
   const after = (await tv.health(p)).resolution;
   check('get_candles (other timeframe, chart restored)', d.length === 5 && after === startRes, `back on ${after}`);
+
+  const deep = await tv.candles(p, 2000);
+  const sorted = deep.every((c, i) => i === 0 || c.time > deep[i - 1].time);
+  const viewAfter = (await tv.health(p)).visible_range;
+  check('get_candles loads deep history (2000 bars, in order)', deep.length === 2000 && sorted, `from ${deep[0]?.time}`);
+  check('history loading restores the zoom', Math.abs(viewAfter.to - startHealth.visible_range.to) <= 3600 * 3, `${startHealth.visible_range.to} -> ${viewAfter.to}`);
+
+  const tmp = join(tmpdir(), 'trading-crew-mcp-selftest');
+  const saved = await tv.saveCandles(p, { count: 1500, name: 'selftest candles', dir: tmp });
+  const onDisk = JSON.parse(await readFile(saved.path, 'utf8'));
+  check('save_candles writes exact data to a file', onDisk.length === 1500 && onDisk[0].time === saved.first_time && /selftest_candles\.json$/.test(saved.path), saved.path);
+  await rm(tmp, { recursive: true, force: true });
 
   const pv = findPivots(await tv.candles(p, 300), 3);
   check('find_pivots', pv.length > 0 && pv.every((x) => x.time && x.price), `${pv.length} pivots`);

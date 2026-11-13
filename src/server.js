@@ -35,9 +35,12 @@ const style = {
 
 server.tool('chart_health', 'Symbol, timeframe, layout name and how many bars are loaded on the open chart.', {}, tool((p) => tv.health(p)));
 server.tool('get_quote', 'Latest candle (open, high, low, close, volume, time) of the open chart.', {}, tool((p) => tv.quote(p)));
-server.tool('get_candles', 'Last N candles, oldest first, with unix times. Pass resolution (e.g. 60, 240, D) to read another timeframe; the chart is switched and then restored.',
-  { count: z.number().int().min(1).max(1000).optional(), resolution: z.string().optional() },
+server.tool('get_candles', 'Last N candles (up to 5000), oldest first, with unix times. Large counts load the full history first. Pass resolution (e.g. 60, 240, D) to read another timeframe; the chart is switched and then restored.',
+  { count: z.number().int().min(1).max(5000).optional(), resolution: z.string().optional() },
   tool((p, a) => tv.candles(p, a.count, a.resolution)));
+server.tool('save_candles', 'Save up to 20000 candles of a timeframe to a JSON file and return its path, so analysis scripts can read exact data. Loads the full history if needed (M15 reaches back about 4 months).',
+  { count: z.number().int().min(1).max(20000).optional(), resolution: z.string().optional(), name: z.string().optional() },
+  tool((p, a) => tv.saveCandles(p, { count: a.count, resolution: a.resolution, name: a.name })));
 server.tool('find_pivots', 'Swing highs and lows with exact candle times and prices, from the last N candles of a timeframe.',
   { count: z.number().int().min(10).max(1000).optional(), resolution: z.string().optional(), strength: z.number().int().min(1).max(10).optional() },
   tool(async (p, a) => findPivots(await tv.candles(p, a.count ?? 300, a.resolution), a.strength ?? 3)));

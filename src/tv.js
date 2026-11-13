@@ -39,7 +39,7 @@ export function quote(page) {
 
 /** The last N candles of the chart's current timeframe. Oldest first. */
 export function candlesNow(page, count = 100) {
-  const n = Math.max(1, Math.min(Number(count) || 100, 1000));
+  const n = Math.max(1, Math.min(Number(count) || 100, 20000));
   return page.evaluate(`(() => {
     const chart = ${CHART};
     const b = chart.chartModel().mainSeries().bars();
@@ -54,23 +54,75 @@ export function candlesNow(page, count = 100) {
 }
 
 /**
+ * Load the chart's full history for the current timeframe (TradingView loads it lazily).
+ * Scrolls to the first bar, waits until the bar count stops growing, then returns to the
+ * latest bar and puts the zoom back. Returns the number of bars now loaded.
+ */
+export async function loadHistory(page) {
+  const view = await page.evaluate(`${CHART}.getVisibleBarsRange()`);
+  await page.evaluate(`${CHART}.chartModel().timeScale().scrollToFirstBar()`);
+  let last = -1;
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const size = await page.evaluate(`${CHART}.chartModel().mainSeries().bars().size()`);
+    if (size === last && size > 300) break;
+    last = size;
+  }
+  await page.evaluate(`${CHART}.chartModel().timeScale().scrollToRealtime()`);
+  await new Promise((r) => setTimeout(r, 800));
+  if (view) await setVisibleRange(page, view.from, view.to).catch(() => {});
+  return page.evaluate(`${CHART}.chartModel().mainSeries().bars().size()`);
+}
+
+async function ensureBars(page, count) {
+  const have = await page.evaluate(`${CHART}.chartModel().mainSeries().bars().size()`);
+  if (count > have) await loadHistory(page);
+}
+
+/**
  * Last N candles. With `resolution`, switch the chart to that timeframe, read, and switch back,
  * so higher-timeframe history is available without leaving the chart on it.
+ * Asking for more candles than are loaded loads the full history first.
  */
 export async function candles(page, count = 100, resolution) {
-  if (!resolution) return candlesNow(page, count);
+  if (!resolution) {
+    await ensureBars(page, count);
+    return candlesNow(page, count);
+  }
   const before = await page.evaluate(`${CHART}.resolution()`);
-  if (sameResolution(String(resolution), before)) return candlesNow(page, count);
+  if (sameResolution(String(resolution), before)) {
+    await ensureBars(page, count);
+    return candlesNow(page, count);
+  }
   const view = await page.evaluate(`${CHART}.getVisibleBarsRange()`);
   try {
     await setTimeframe(page, resolution);
     await waitForBars(page, resolution);
+    await ensureBars(page, count);
     return await candlesNow(page, count);
   } finally {
     await setTimeframe(page, before);
     await waitForBars(page, before).catch(() => {});
     if (view) await setVisibleRange(page, view.from, view.to).catch(() => {});
   }
+}
+
+/**
+ * Save candles to a JSON file (so an agent never has to copy numbers by hand).
+ * The file goes in dir (default: TV_DATA_DIR, else ./trading-crew-data) and name is sanitised.
+ */
+export async function saveCandles(page, { count = 5000, resolution, name, dir } = {}) {
+  const { mkdir, writeFile } = await import('node:fs/promises');
+  const { join, resolve } = await import('node:path');
+  const rows = await candles(page, Math.min(Number(count) || 5000, 20000), resolution);
+  const q = await quote(page);
+  const label = String(resolution || q.resolution).replace(/[^A-Za-z0-9]/g, '');
+  const safe = String(name || `${q.symbol.split(':').pop()}-${label}`).replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '');
+  const folder = resolve(dir || process.env.TV_DATA_DIR || join(process.cwd(), 'trading-crew-data'));
+  await mkdir(folder, { recursive: true });
+  const file = join(folder, `${safe}.json`);
+  await writeFile(file, JSON.stringify(rows));
+  return { path: file, candles: rows.length, first_time: rows[0]?.time ?? null, last_time: rows.at(-1)?.time ?? null };
 }
 
 // The chart reports daily as "1D", weekly as "1W", monthly as "1M".
