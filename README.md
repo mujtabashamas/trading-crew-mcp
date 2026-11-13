@@ -5,7 +5,7 @@ An MCP server that lets Claude read and annotate the chart open in a **locally r
 ## Tools (20)
 | Group | Tools |
 |---|---|
-| Read | `chart_health`, `get_quote`, `get_candles` (optional `resolution` reads D, 240, 60... and restores the chart; large counts load the full history, about 4 months of M15), `save_candles` (writes up to 20,000 candles to a JSON file so analysis never copies numbers by hand), `find_pivots` |
+| Read | `chart_health`, `get_quote`, `get_candles` (up to 500 candles as a compact table; optional `resolution` reads D, 240, 60... and restores the chart), `save_candles` (writes up to 20,000 candles to a JSON file so analysis never copies numbers by hand), `find_pivots` |
 | View | `set_timeframe`, `set_visible_range`, `screenshot` |
 | Draw | `list_drawings`, `get_drawing`, `draw_trend_line`, `draw_chain`, `draw_horizontal_line`, `remove_drawing`, `clear_drawings` |
 | Alerts | `list_alerts`, `create_alert`, `modify_alert`, `list_fires`, `delete_alert` |

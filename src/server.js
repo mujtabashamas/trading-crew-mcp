@@ -19,7 +19,7 @@ async function getPage() {
 const tool = (fn) => async (args) => {
   try {
     const result = await fn(await getPage(), args);
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   } catch (e) {
     page = null; // reconnect next time
     return { isError: true, content: [{ type: 'text', text: String(e.message || e) }] };
@@ -27,6 +27,8 @@ const tool = (fn) => async (args) => {
 };
 
 const server = new McpServer({ name: 'trading-crew-mcp', version: '0.1.0' });
+/** Candles as a compact table (fields once, then number rows): about 4x smaller than one object per candle. */
+const table = (cs) => ({ fields: ['time', 'open', 'high', 'low', 'close', 'volume'], rows: cs.map((c) => [c.time, c.open, c.high, c.low, c.close, c.volume]) });
 const point = z.object({ time: z.number().describe('Candle time, unix seconds'), price: z.number() });
 const style = {
   color: z.string().optional().describe('Hex colour, e.g. #ff1744 red, #00c853 green'),
@@ -35,9 +37,9 @@ const style = {
 
 server.tool('chart_health', 'Symbol, timeframe, layout name and how many bars are loaded on the open chart.', {}, tool((p) => tv.health(p)));
 server.tool('get_quote', 'Latest candle (open, high, low, close, volume, time) of the open chart.', {}, tool((p) => tv.quote(p)));
-server.tool('get_candles', 'Last N candles (up to 5000), oldest first, with unix times. Large counts load the full history first. Pass resolution (e.g. 60, 240, D) to read another timeframe; the chart is switched and then restored.',
-  { count: z.number().int().min(1).max(5000).optional(), resolution: z.string().optional() },
-  tool((p, a) => tv.candles(p, a.count, a.resolution)));
+server.tool('get_candles', 'Last N candles (up to 500) as a compact table {fields, rows}, oldest first, with unix times. For more than 500, use save_candles. Pass resolution (e.g. 60, 240, D) to read another timeframe; the chart is switched and then restored.',
+  { count: z.number().int().min(1).max(500).optional(), resolution: z.string().optional() },
+  tool(async (p, a) => table(await tv.candles(p, a.count, a.resolution))));
 server.tool('save_candles', 'Save up to 20000 candles of a timeframe to a JSON file and return its path, so analysis scripts can read exact data. Loads the full history if needed (M15 reaches back about 4 months).',
   { count: z.number().int().min(1).max(20000).optional(), resolution: z.string().optional(), name: z.string().optional() },
   tool((p, a) => tv.saveCandles(p, { count: a.count, resolution: a.resolution, name: a.name })));
@@ -56,8 +58,9 @@ server.tool('draw_trend_line', 'Draw a straight line between two points (exact c
 server.tool('draw_chain',
   'Draw a connected chain of straight lines through pivot points (each line starts where the last ended). side "above" = red chain over swing highs, "below" = green chain under swing lows. Refuses and reports the candles if any line would cut through a candle, unless force is true.',
   { points: z.array(point).min(2), side: z.enum(['above', 'below']), color: z.string().optional(), width: z.number().int().min(1).max(6).optional(),
-    extend_right: z.boolean().optional(), force: z.boolean().optional() },
-  tool((p, a) => tv.drawChain(p, a.points, { side: a.side, color: a.color ?? (a.side === 'above' ? '#ff1744' : '#00c853'), width: a.width, extendRight: a.extend_right ?? true, force: a.force })));
+    extend_right: z.boolean().optional(), force: z.boolean().optional(),
+    tolerance: z.number().min(0).max(2).optional().describe('Points a candle may overshoot a line before it counts as cutting it (default 0)') },
+  tool((p, a) => tv.drawChain(p, a.points, { tolerance: a.tolerance, side: a.side, color: a.color ?? (a.side === 'above' ? '#ff1744' : '#00c853'), width: a.width, extendRight: a.extend_right ?? true, force: a.force })));
 server.tool('get_drawing', 'Points, colour and width of one drawing by id.', { id: z.string() }, tool((p, a) => tv.getDrawing(p, a.id)));
 server.tool('draw_horizontal_line', 'Draw a horizontal line at a price.',
   { price: z.number(), ...style }, tool((p, a) => tv.drawHorizontalLine(p, a.price, { color: a.color, width: a.width })));
