@@ -60,18 +60,21 @@ export function candlesNow(page, count = 100) {
  */
 export async function loadHistory(page) {
   const view = await page.evaluate(`${CHART}.getVisibleBarsRange()`);
-  await page.evaluate(`${CHART}.chartModel().timeScale().scrollToFirstBar()`);
-  let last = -1;
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const size = await page.evaluate(`${CHART}.chartModel().mainSeries().bars().size()`);
-    if (size === last && size > 300) break;
+  const sizeNow = () => page.evaluate(`${CHART}.chartModel().mainSeries().bars().size()`);
+  const loading = () => page.evaluate(`${CHART}.chartModel().mainSeries().isLoading?.() ?? false`);
+  let last = await sizeNow(), idle = 0;
+  // TradingView loads older bars in chunks, so keep asking for the first bar until nothing new arrives.
+  for (let i = 0; i < 60 && idle < 3; i++) {
+    await page.evaluate(`${CHART}.chartModel().timeScale().scrollToFirstBar()`);
+    await new Promise((r) => setTimeout(r, 1500));
+    const size = await sizeNow();
+    idle = size === last && !(await loading()) ? idle + 1 : 0;
     last = size;
   }
   await page.evaluate(`${CHART}.chartModel().timeScale().scrollToRealtime()`);
   await new Promise((r) => setTimeout(r, 800));
   if (view) await setVisibleRange(page, view.from, view.to).catch(() => {});
-  return page.evaluate(`${CHART}.chartModel().mainSeries().bars().size()`);
+  return sizeNow();
 }
 
 async function ensureBars(page, count) {

@@ -36,10 +36,10 @@ try {
   const after = (await tv.health(p)).resolution;
   check('get_candles (other timeframe, chart restored)', d.length === 5 && after === startRes, `back on ${after}`);
 
-  const deep = await tv.candles(p, 2000);
+  const deep = await tv.candles(p, 6000);
   const sorted = deep.every((c, i) => i === 0 || c.time > deep[i - 1].time);
   const viewAfter = (await tv.health(p)).visible_range;
-  check('get_candles loads deep history (2000 bars, in order)', deep.length === 2000 && sorted, `from ${deep[0]?.time}`);
+  check('get_candles loads deep history (6000 bars, in order)', deep.length === 6000 && sorted, `from ${deep[0]?.time}`);
   check('history loading restores the zoom', Math.abs(viewAfter.to - startHealth.visible_range.to) <= 3600 * 3, `${startHealth.visible_range.to} -> ${viewAfter.to}`);
 
   const tmp = join(tmpdir(), 'trading-crew-mcp-selftest');
