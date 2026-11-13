@@ -35,7 +35,7 @@ claude mcp add trading-crew --scope project -- node /full/path/to/trading-crew-m
 ```
 Environment: `TV_DEBUG_HOST` (default `127.0.0.1`), `TV_DEBUG_PORT` (default `9222`).
 
-Check it against your chart: `node scripts/smoke.mjs` (draws two lines and removes them, creates a test alert far from price and deletes it).
+Check it against your chart: `npm run selftest` (18 live checks: reads, draws and removes lines, creates, edits and deletes a far-away test alert, restores your zoom, and confirms your alert and drawing counts are unchanged).
 
 ## Status
 Version 0.1. Works on TradingView Desktop (macOS) with the page version of 12 Nov 2026. TradingView can change its internals at any time, which would break the page calls; the alert payload in particular was matched to a real request and may need updating.
